@@ -1,19 +1,7 @@
 import {create} from "ipfs";
 import {getDelta,applyDelta} from "little-diff";
 import {argWaiter} from "arg-waiter";
-
-const map = argWaiter(async (generator,f) => {
-    let i = 0;
-    const result = [];
-    for await (const item of generator) {
-        result.push(await f(item,i++,generator))
-    }
-    return result;
-})
-
-const all = argWaiter( (generator) => {
-    return map(generator,(item) => item)
-});
+import {all} from "@anywhichway/all";
 
 const chunksToBuffer = argWaiter((chunks) => {
     return new Uint8Array(chunks.reduce((buffer,chunk) => {
@@ -29,8 +17,8 @@ const normalizeContent = argWaiter((value) => {
     return value;
 })
 
-const versioned = argWaiter((ipfsFileStore) => {
-    ipfsFileStore.files.versioned = {
+const ipvfs = argWaiter((ipfs) => {
+    ipfs.files.versioned = {
         async read(path,{withMetadata,withHistory,withRoot}={}) {
             const parts = path.split("/"),
                 name = parts.pop(),
@@ -41,7 +29,7 @@ const versioned = argWaiter((ipfsFileStore) => {
                 data = JSON.parse(String.fromCharCode(...buffer));
             let i = data.length-1;
             if(vtype) {
-                let i = -1;
+                i = -1;
                 if(vtype==="#") {
                     i = version - 1;
                 } else {
@@ -52,16 +40,16 @@ const versioned = argWaiter((ipfsFileStore) => {
                     }
                 }
                 if(i<0) {
-                    throw new Error(`Version ${vtype}${version} not found`)
+                    throw new Error(`Version ${vtype}${version} not found for ${parts.join("/")}/${name}`)
                 }
             }
             const metadata = data[i],
-                rootContent = await chunksToBuffer(all(ipfs.cat(data[0].path))),
+                rootBuffer = await chunksToBuffer(all(ipfs.cat(data[0].path))),
+                rootContent = metadata.kind==="String" ? String.fromCharCode(...rootBuffer) : rootBuffer,
                 history = data.slice(0,i+1),
-                targetContent = history.reduce((targetContent,item) => {
+                content = history.reduce((targetContent,item) => {
                     return applyDelta(targetContent,item.delta);
                 },rootContent);
-            const content = metadata.kind==="String" ? String.fromCharCode(...targetContent) : targetContent;
             if(withMetadata||withHistory||withRoot) {
                 const result = {
                     content
@@ -82,7 +70,7 @@ const versioned = argWaiter((ipfsFileStore) => {
         },
         async write(path,content,{version,...rest}) {
             const kind = content.constructor.name;
-            content = await normalizeContent(content);
+            //content = await normalizeContent(content);
             const parts = path.split("/"),
                 name = parts.pop(),
                 dir = parts.join("/") + "/",
@@ -92,7 +80,8 @@ const versioned = argWaiter((ipfsFileStore) => {
                 const buffer = await chunksToBuffer(all(ipfs.files.read(path))),
                     data = JSON.parse(String.fromCharCode(...buffer)),
                     parent = data[data.length-1],
-                    rootContent = await chunksToBuffer(all(ipfs.cat(data[0].path))),
+                    rootBuffer = await chunksToBuffer(all(ipfs.cat(data[0].path))),
+                    rootContent = kind==="String" ? String.fromCharCode(...rootBuffer) : rootBuffer,
                     parentContent = data.reduce((parentContent,item) => {
                         return applyDelta(parentContent,item.delta);
                     },rootContent),
@@ -116,27 +105,8 @@ const versioned = argWaiter((ipfsFileStore) => {
             await ipfs.files.write(path,JSON.stringify(data),{create:true});
         }
     }
-    return ipfsFileStore;
+    return ipfs;
 });
 
-const ipfs = await versioned(create({repo:"demo-filestore"}));
-
-const text = "Hello world!";
-
-try {
-    //await ipfs.files.rm("/hello-world.txt");
-} catch(e) {
-
-}
-//await ipfs.files.versioned.write("/hello-world.txt","Hello world!",{author:"Simon Y. Blackwell"});
-//await ipfs.files.versioned.write("/hello-world.txt","hello there ann!",{author:"Simon Y. Blackwell"});
-//await ipfs.files.versioned.write("/hello-world.txt","hello there bill!",{author:"Simon Y. Blackwell",version:"1.0.0"});
-await ipfs.files.versioned.write("/hello-world.txt","hello there jabe!",{author:"Simon Y. Blackwell"});
-console.log(await all(ipfs.files.ls('/')));
-console.log(await ipfs.files.versioned.read("/hello-world.txt#1"));
-console.log(await ipfs.files.versioned.read("/hello-world.txt#2"));
-console.log(await ipfs.files.versioned.read("/hello-world.txt@1.0.0"));
-console.log(await ipfs.files.versioned.read("/hello-world.txt",{withMetadata:true,withHistory:true,withRoot:true}));
-
-export {versioned,versioned as default}
+export {ipvfs,ipvfs as default}
 

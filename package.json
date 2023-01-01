@@ -24,6 +24,7 @@
   },
   "homepage": "https://github.com/anywhichway/ipvfs#readme",
   "dependencies": {
+    "@anywhichway/all": "^0.0.1",
     "arg-waiter": "^0.0.1",
     "ipfs": "^0.65.0",
     "little-diff": "^0.0.1"
