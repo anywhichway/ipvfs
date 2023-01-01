@@ -1,0 +1,31 @@
+{
+  "name": "ipvfs",
+  "version": "0.0.1",
+  "description": "Creates and manages diff versioned files in an IPFS store",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anywhichway/ipvfs.git"
+  },
+  "keywords": [
+    "IPFS",
+    "version",
+    "delta",
+    "diff"
+  ],
+  "author": "Simon Y. Blackwell",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/anywhichway/ipvfs/issues"
+  },
+  "homepage": "https://github.com/anywhichway/ipvfs#readme",
+  "dependencies": {
+    "arg-waiter": "^0.0.1",
+    "ipfs": "^0.65.0",
+    "little-diff": "^0.0.1"
+  }
+}
