@@ -78,7 +78,7 @@ The path may end with one of:
 
 An object is only returned if one of `withMetadata`, `withHistory`, `withRoot` is present. The returned object has the following form:
 
-```javascript
+```json
 {
     content: <the file contents as a string or buffer>,
     metadata: {
@@ -94,7 +94,24 @@ An object is only returned if one of `withMetadata`, `withHistory`, `withRoot` i
 }
 ```
 
-## async ipfs.files.versioned.write(path:string,content:string|Buffer,{version,...resetOfMetadata}={})
+Change records take the following form:
+
+```javascript
+{
+    path: <CID of the the base content, only in the first record>,
+    version: <manually provided version or the index+1 in the history>,
+    kind: <constructor name of original content provided>,
+    delta: [
+        [start,end,[...additions]]
+        ...
+    ],
+    birthtime: <ms>,
+    ctime: <ms>
+    ...restOfMetadata <manually provided>
+}
+```
+
+## async ipfs.files.versioned.write(path:string,content:string|Buffer,{version,...restOfMetadata}={})
 
 Writes a versioned file.
 
@@ -106,6 +123,8 @@ If there are any changes since the first write (including changes to the version
 
 
 # Release History (Reverse Chronological Order)
+
+2023-01-01 v0.0.3 Documentation updates.
 
 2023-01-01 v0.0.2 Documentation updates. Fix to version handling when version does not exist and error throwing when provided # version is not a number.
 
