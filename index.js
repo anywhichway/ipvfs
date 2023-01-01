@@ -10,13 +10,6 @@ const chunksToBuffer = argWaiter((chunks) => {
     },[]))
 })
 
-const normalizeContent = argWaiter((value) => {
-    if(typeof(value)==="string") {
-        return new Uint8Array([...value].map(ch => ch.charCodeAt()));
-    }
-    return value;
-})
-
 const ipvfs = argWaiter((ipfs) => {
     ipfs.files.versioned = {
         async read(path,{withMetadata,withHistory,withRoot}={}) {
@@ -27,11 +20,16 @@ const ipvfs = argWaiter((ipfs) => {
                 vtype = name.includes("@") ? "@" : (name.includes("#") ? "#" : null),
                 buffer = await chunksToBuffer(all(ipfs.files.read(nameParts ? parts.join("/") + "/" + nameParts.pop() : path))),
                 data = JSON.parse(String.fromCharCode(...buffer));
+            if(name.includes("#") && isNaN(version)) {
+                throw new TypeError(`File version using # is not a number for: ${name}`);
+            }
             let i = data.length-1;
             if(vtype) {
                 i = -1;
                 if(vtype==="#") {
-                    i = version - 1;
+                    if(data[version-1]) {
+                        i = version - 1;
+                    }
                 } else {
                     for(let j=0;j<data.length;j++) { // gets last index in case manual versioning is a bit messed up by users
                         if(data[j].version===version) {
@@ -68,9 +66,8 @@ const ipvfs = argWaiter((ipfs) => {
             }
             return content;
         },
-        async write(path,content,{version,...rest}) {
+        async write(path,content,{version,...rest}={}) {
             const kind = content.constructor.name;
-            //content = await normalizeContent(content);
             const parts = path.split("/"),
                 name = parts.pop(),
                 dir = parts.join("/") + "/",
@@ -108,5 +105,7 @@ const ipvfs = argWaiter((ipfs) => {
     return ipfs;
 });
 
-export {ipvfs,ipvfs as default}
+ipvfs.chunksToBuffer = chunksToBuffer;
+
+export {ipvfs,chunksToBuffer,ipvfs as default}
 
