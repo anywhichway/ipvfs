@@ -1,7 +1,7 @@
 import {create} from "ipfs";
 import {getDelta,applyDelta} from "little-diff";
 import {argWaiter} from "arg-waiter";
-import {all} from "@anywhichway/all";
+import {all as allItems} from "@anywhichway/all";
 
 const chunksToBuffer = argWaiter((chunks) => {
     return new Uint8Array(chunks.reduce((buffer,chunk) => {
@@ -10,15 +10,57 @@ const chunksToBuffer = argWaiter((chunks) => {
     },[]))
 })
 
+const getChangeSets = (history) => {
+    const changeSets = [],
+        processed = new Map();
+    history.forEach((item) => {
+        const changeSet = {
+            changes: []
+        }
+        history.forEach(({delta}) => {
+            if(!processed.has(delta)) {
+                processed.set(delta,new Set());
+            }
+            const processedChanges = processed.get(delta);
+            delta.forEach((change) => {
+                if(processedChanges.has(change)) {
+                    return;
+                }
+                const [start,del,changes] = change;
+                if(changeSet.start===undefined) {
+                    changeSet.start = start;
+                    changeSet.end = start + del;
+                    processedChanges.add(change);
+                    changeSet.changes.push(change);
+                }
+                if(start<changeSet.start) {
+                    changeSet.start = start;
+                    changeSet.end = Math.max(start+del,changeSet.end);
+                    processedChanges.add(change);
+                    changeSet.changes.push(change);
+                } else if(start<changeSet.end) {
+                    changeSet.end = Math.max(start+del,changeSet.end);
+                    processedChanges.add(change);
+                    changeSet.changes.push(change);
+                }
+            })
+        })
+        if(changeSet.changes.length>0) {
+            changeSets.push(changeSet)
+        }
+    })
+    return changeSets.sort((a,b) => a.start<b.start ? a : b) ;
+}
+
 const ipvfs = argWaiter((ipfs) => {
     ipfs.files.versioned = {
-        async read(path,{withMetadata,withHistory,withRoot}={}) {
+        async read(path,{all,withMetadata,withHistory,withRoot}={}) {
             const parts = path.split("/"),
                 name = parts.pop(),
                 nameParts =  name.includes("@") ? name.split("@") : (name.includes("#") ? name.split("#") : null),
                 version = name.includes("@")  ? nameParts.pop() : (name.includes("#") ? parseInt(nameParts.pop()) : null),
                 vtype = name.includes("@") ? "@" : (name.includes("#") ? "#" : null),
-                buffer = await chunksToBuffer(all(ipfs.files.read(nameParts ? parts.join("/") + "/" + nameParts.pop() : path))),
+                buffer = await chunksToBuffer(allItems(ipfs.files.read(nameParts ? parts.join("/") + "/" + nameParts.pop() : path))),
                 data = JSON.parse(String.fromCharCode(...buffer));
             if(name.includes("#") && isNaN(version)) {
                 throw new TypeError(`File version using # is not a number for: ${name}`);
@@ -42,12 +84,44 @@ const ipvfs = argWaiter((ipfs) => {
                 }
             }
             const metadata = data[i],
-                rootBuffer = await chunksToBuffer(all(ipfs.cat(data[0].path))),
-                rootContent = metadata.kind==="String" ? String.fromCharCode(...rootBuffer) : rootBuffer,
-                history = data.slice(0,i+1),
-                content = history.reduce((targetContent,item) => {
-                    return applyDelta(targetContent,item.delta);
-                },rootContent);
+                contentStream = ipfs.cat(data[0].path),
+                history = data.slice(0, i + 1);
+            let content;
+            if(all) {
+                const rootBuffer = await chunksToBuffer(allItems(contentStream)),
+                    rootContent = metadata.kind === "String" ? String.fromCharCode(...rootBuffer) : rootBuffer;
+                content = history.reduce((targetContent, {delta}) => {
+                    return applyDelta(targetContent,delta);
+                }, rootContent);
+            } else {
+                const changeSets = getChangeSets(history);
+                content = (async function*() {
+                    let array = [],
+                        read = 0;
+                    for(const {start,end,changes} of changeSets) {
+                        const offset = start,
+                            length = end - start;
+                        for await(const chunk of contentStream) {
+                            array = [...array,...chunk];
+                            read += array.length;
+                            if(read<=end) {
+                                yield metadata.kind === "String" ? String.fromCharCode(...array) : array;
+                            } else if(array.length>=length) {
+                                const nextarray = array.slice(array.length-length);
+                                array = new Uint8Array(array.slice(0,array.length-length));
+                                const nextContent =  metadata.kind === "String" ? String.fromCharCode(...array) : array;
+                                yield applyDelta(nextContent,changes.map(([start,...rest]) => [start-offset,...rest]));
+                                array = nextarray;
+                            }
+                        }
+                        if(array.length>0) {
+                            const nextContent =  metadata.kind === "String" ? String.fromCharCode(...array) : array;
+                            yield applyDelta(nextContent,changes.map(([start,...rest]) => [start-offset,...rest]));
+                        }
+                        array = [];
+                    }
+                })();
+            }
             if(withMetadata||withHistory||withRoot) {
                 const result = {
                     content
@@ -71,13 +145,13 @@ const ipvfs = argWaiter((ipfs) => {
             const parts = path.split("/"),
                 name = parts.pop(),
                 dir = parts.join("/") + "/",
-                files = await all(ipfs.files.ls(dir)),
+                files = await allItems(ipfs.files.ls(dir)),
                 file = files.find((file) => file.name===name);
             if(file) {
-                const buffer = await chunksToBuffer(all(ipfs.files.read(path))),
+                const buffer = await chunksToBuffer(allItems(ipfs.files.read(path))),
                     data = JSON.parse(String.fromCharCode(...buffer)),
                     parent = data[data.length-1],
-                    rootBuffer = await chunksToBuffer(all(ipfs.cat(data[0].path))),
+                    rootBuffer = await chunksToBuffer(allItems(ipfs.cat(data[0].path))),
                     rootContent = kind==="String" ? String.fromCharCode(...rootBuffer) : rootBuffer,
                     parentContent = data.reduce((parentContent,item) => {
                         return applyDelta(parentContent,item.delta);
@@ -89,7 +163,7 @@ const ipvfs = argWaiter((ipfs) => {
                         kind,
                         ...rest,
                         delta,
-                        ctime: Date.now()
+                        mtime: Date.now()
                     })
                     await ipfs.files.rm(path); // write sometimes fails to flush tail of file, so simply delete and re-create
                     await ipfs.files.write(path,JSON.stringify(data),{create:true});
@@ -98,7 +172,7 @@ const ipvfs = argWaiter((ipfs) => {
             }
             const added = await ipfs.add(content),
                 now = Date.now(),
-                data = [{path:added.path,version:version||1,kind,...rest,delta:[],birthtime:now,ctime:now}];
+                data = [{path:added.path,version:version||1,kind,...rest,delta:[],birthtime:now,mtime:now}];
             await ipfs.files.write(path,JSON.stringify(data),{create:true});
         }
     }

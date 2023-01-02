@@ -10,19 +10,24 @@ try {
 
 }
 // use the versioned forms of write and read
-console.log(await ipfs.files.versioned.write("/hello-world.txt","hello there jake!")); // returns undefined just like regular version
-console.log(await ipfs.files.versioned.read("/hello-world.txt#1")); // unlike the regular version, returns the contents
+console.log(await ipfs.files.versioned.write("/hello-world.txt","hello there peter!")); // returns undefined just like regular version
+console.log(await ipfs.files.versioned.read("/hello-world.txt#1",{all:true})); // returns the contents as a single item, i.e. all chunks combined
 try {
-    console.log(await ipfs.files.versioned.read("/hello-world.txt#2")); // throws since there is no version 2
+    console.log(await ipfs.files.versioned.read("/hello-world.txt#2",{all:true})); // throws since there is no version 2
 } catch(e) {
     console.log(e)
 }
-await ipfs.files.versioned.write("/hello-world.txt","hello there bill!");
+await ipfs.files.versioned.write("/hello-world.txt","hello there paul!");
 // logs the second version of the file
-console.log(await ipfs.files.versioned.read("/hello-world.txt#2"));
+console.log(await ipfs.files.versioned.read("/hello-world.txt#2",{all:true}));
 // logs the same thing as the above, since version 2 is the most recent
-console.log(await ipfs.files.versioned.read("/hello-world.txt"));
+console.log(await ipfs.files.versioned.read("/hello-world.txt",{all:true}));
+await ipfs.files.versioned.write("/hello-world.txt","hello there mary!");
+// NOTE!! CHUNKING DOES NOT WORK IN THIS RELEASE
+for await(const chunk of await ipfs.files.versioned.read("/hello-world.txt#3")) { // returns a generator for chunks of the file as Buffers or strings
+    console.log(chunk);
+}
 // see documentation for withMetadata, withHistory, withRoot
-console.log(await ipfs.files.versioned.read("/hello-world.txt",{withMetadata:true,withHistory:true,withRoot:true}));
+console.log(await ipfs.files.versioned.read("/hello-world.txt",{all:true,withMetadata:true,withHistory:true,withRoot:true}));
 // standard ipfs file read returns an array of transforms and metadata, the first item of which has a path (CID) of the original content
 console.log(JSON.parse(String.fromCharCode(...await ipvfs.chunksToBuffer(all(ipfs.files.read("/hello-world.txt"))))));

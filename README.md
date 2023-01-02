@@ -40,20 +40,25 @@ try {
 
 }
 // use the versioned forms of write and read
-console.log(await ipfs.files.versioned.write("/hello-world.txt","hello there jake!")); // returns undefined just like regular version
-console.log(await ipfs.files.versioned.read("/hello-world.txt#1")); // unlike the regular version, returns the contents
+console.log(await ipfs.files.versioned.write("/hello-world.txt","hello there peter!")); // returns undefined just like regular version
+console.log(await ipfs.files.versioned.read("/hello-world.txt#1",{all:true})); // returns the contents as a single item, i.e. all chunks combined
 try {
-    console.log(await ipfs.files.versioned.read("/hello-world.txt#2")); // throws since there is no version 2
+    console.log(await ipfs.files.versioned.read("/hello-world.txt#2",{all:true})); // throws since there is no version 2
 } catch(e) {
     console.log(e)
 }
-await ipfs.files.versioned.write("/hello-world.txt","hello there bill!");
+await ipfs.files.versioned.write("/hello-world.txt","hello there paul!");
 // logs the second version of the file
-console.log(await ipfs.files.versioned.read("/hello-world.txt#2"));
+console.log(await ipfs.files.versioned.read("/hello-world.txt#2",{all:true}));
 // logs the same thing as the above, since version 2 is the most recent
-console.log(await ipfs.files.versioned.read("/hello-world.txt"));
+console.log(await ipfs.files.versioned.read("/hello-world.txt",{all:true}));
+await ipfs.files.versioned.write("/hello-world.txt","hello there mary!");
+// NOTE!! CHUNKING DOES NOT WORK IN THIS RELEASE
+for await(const chunk of await ipfs.files.versioned.read("/hello-world.txt#3")) { // returns a generator for chunks of the file as Buffers or strings
+    console.log(chunk);
+}
 // see documentation for withMetadata, withHistory, withRoot
-console.log(await ipfs.files.versioned.read("/hello-world.txt",{withMetadata:true,withHistory:true,withRoot:true}));
+console.log(await ipfs.files.versioned.read("/hello-world.txt",{all:true,withMetadata:true,withHistory:true,withRoot:true}));
 // standard ipfs file read returns an array of transforms and metadata, the first item of which has a path (CID) of the original content
 console.log(JSON.parse(String.fromCharCode(...await ipvfs.chunksToBuffer(all(ipfs.files.read("/hello-world.txt"))))));
 ```
@@ -66,9 +71,9 @@ Enhance the `ipfs.files` sub-object to support versioned files with a sub-object
 
 returns `ipfs`
 
-## async ipfs.files.versioned.read(path:string,{withMetadata,withHistory,withRoot}={})
+## async ipfs.files.versioned.read(path:string,{all,withMetadata,withHistory,withRoot}={})
 
-Reads a versioned file and returns the ENTIRE contents, which could be a buffer or a string or an object.
+Reads a versioned file and returns the changed contents as chunks of strings or buffers (depending on content stored) unless `all` is set to true, in which can the entire content is returned at once. In the current version `all` MUST be set to true. Chunking is not yet supported. The API is designed this way to better mirror the regular files API.
 
 The path may end with one of:
 
@@ -76,38 +81,36 @@ The path may end with one of:
 - a file name with a `#<number>` specifier
 - a file name with an `@<string>` specifier
 
-An object is only returned if one of `withMetadata`, `withHistory`, `withRoot` is present. The returned object has the following form:
+An object is only returned if one of `withMetadata`, `withHistory`, `withRoot` is present, otherwise a string or buffer is returned. The returned object has the following form:
 
 ```json
 {
-    content: <the file contents as a string or buffer>,
+    content: string|Buffer|asyncGenerator, // file contents, asyncGenerator if `all` is not set to true
     metadata: {
-            version: <a number or the string specifier for the version>
-            ... rest <any metadata provided when the file was crrated/written
+            version: number|string, // if number it is the same as the index+1 in the history, otherwise manaully assigned string
+            ... rest // key value metadata provided when the file was created or updated
         },
     history: [
-           <ordered array of change records for contents>
+           ...ChangeRecord
     ],
-    root: [
-         <the first change record for the file, i.e. its creation record>   
-    ]
+    root: ChangeRecord
 }
 ```
 
-Change records take the following form:
+A ChangeRecord takes the following form:
 
 ```javascript
 {
-    path: <CID of the the base content, only in the first record>,
-    version: <manually provided version or the index+1 in the history>,
-    kind: <constructor name of original content provided>,
-    delta: [
-        [start,end,[...additions]]
+    path: string // CID of the the base content, only exists in the first record of a change history,
+    version: number|string // if number it is the same as the index+1 in the history, otherwise manaully assigned string
+    kind: string // constructor name of original content provided,
+    delta: [ // splice instructions
+        [start,end,[...additions]] // start position, number items (chars or buffer positions to delete), items (chars or buffer entries) to insert (if any)
         ...
     ],
-    birthtime: <ms>,
-    ctime: <ms>
-    ...restOfMetadata <manually provided>
+    btime: number, // ms time first contents were first created
+    mtime: number // ms time update occured
+    ...restOfMetadata // manual provided
 }
 ```
 
@@ -115,14 +118,19 @@ Change records take the following form:
 
 Writes a versioned file.
 
-`version` and `...resetOfMetadata` are optional. `version` can be a number or string. If version is a string, it can be retrieved using the `@` form of `read`. Semantic versioning, .e.g. `@1.0.1` is not required, but certainly possible. The calling library will need to handle the semantics.
+`version` and `...restOfMetadata` are optional. 
 
-If the file does not exist, it is created.
+When `version` is provided, it should be a string. It can be retrieved using the `@` form of `read`. Semantic versioning, .e.g. `@1.0.1` is not required, but certainly possible. The calling library will need to handle the semantics. When a version is not provided, a sequential number is assigned that is the same as the history index postion + 1. Previous versiouns can always be retrieved using the `#` from of `read`.
 
-If there are any changes since the first write (including changes to the version number of metadata, a new version is created.
+the `restOfMetadata` can be any JSON key vale pairs, including nested ones.
 
+If the file at path does not exist, it is created.
+
+If there are any changes to the `content`, `version` or `restOfMetadata` since the previous write a new `ChangeRecord` is added to the history. Leaving properties out of `restOfMetadata` has them remain the same. To delete a property, use an explicit value of `undefined` or `null`.
 
 # Release History (Reverse Chronological Order)
+
+2023-01-02 v0.0.4a Documentation updates. Changed numbering to include the ALPHA (a) indicator.
 
 2023-01-01 v0.0.3 Documentation updates.
 
