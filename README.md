@@ -53,10 +53,11 @@ console.log(await ipfs.files.versioned.read("/hello-world.txt#2",{all:true}));
 // logs the same thing as the above, since version 2 is the most recent
 console.log(await ipfs.files.versioned.read("/hello-world.txt",{all:true}));
 await ipfs.files.versioned.write("/hello-world.txt","hello there mary!");
-// NOTE!! CHUNKING DOES NOT WORK IN THIS RELEASE
+// NOTE!! CHUNKING ONLY TESTED FOR SMALL FILES
 for await(const chunk of await ipfs.files.versioned.read("/hello-world.txt#3")) { // returns a generator for chunks of the file as Buffers or strings
     console.log(chunk);
 }
+console.log((await all(ipfs.files.versioned.read("/hello-world.txt#3"))).join("")) // same as above but joined
 // see documentation for withMetadata, withHistory, withRoot
 console.log(await ipfs.files.versioned.read("/hello-world.txt",{all:true,withMetadata:true,withHistory:true,withRoot:true}));
 // standard ipfs file read returns an array of transforms and metadata, the first item of which has a path (CID) of the original content
@@ -129,6 +130,8 @@ If the file at path does not exist, it is created.
 If there are any changes to the `content`, `version` or `restOfMetadata` since the previous write a new `ChangeRecord` is added to the history. Leaving properties out of `restOfMetadata` has them remain the same. To delete a property, use an explicit value of `undefined` or `null`.
 
 # Release History (Reverse Chronological Order)
+
+2023-01-02 v0.0.5a Documentation updates. Chunking working for small files (i.e. those that are a single chunk).
 
 2023-01-02 v0.0.4a Documentation updates. Changed numbering to include the ALPHA (a) indicator.
 

@@ -49,7 +49,7 @@ const getChangeSets = (history) => {
             changeSets.push(changeSet)
         }
     })
-    return changeSets.sort((a,b) => a.start<b.start ? a : b) ;
+    return changeSets;
 }
 
 const ipvfs = argWaiter((ipfs) => {
@@ -97,28 +97,37 @@ const ipvfs = argWaiter((ipfs) => {
                 const changeSets = getChangeSets(history);
                 content = (async function*() {
                     let array = [],
-                        read = 0;
+                        offset = 0;
                     for(const {start,end,changes} of changeSets) {
-                        const offset = start,
-                            length = end - start;
+                        const length = end - start;
                         for await(const chunk of contentStream) {
-                            array = [...array,...chunk];
-                            read += array.length;
-                            if(read<=end) {
-                                yield metadata.kind === "String" ? String.fromCharCode(...array) : array;
-                            } else if(array.length>=length) {
-                                const nextarray = array.slice(array.length-length);
-                                array = new Uint8Array(array.slice(0,array.length-length));
-                                const nextContent =  metadata.kind === "String" ? String.fromCharCode(...array) : array;
-                                yield applyDelta(nextContent,changes.map(([start,...rest]) => [start-offset,...rest]));
-                                array = nextarray;
+                            array = [...chunk];
+                            offset += chunk.length;
+                            if(offset<start) {
+                                yield metadata.kind === "String" ? String.fromCharCode(...new Uint8Array(array)) : new Uint8Array(array);
+                            } else {
+                                yield metadata.kind === "String" ? String.fromCharCode(...new Uint8Array(array.slice(0,offset-(offset-start)))) : new Uint8Array(array.slice(0,offset-(offset-start)));
+                                array = array.slice(offset-(offset-start));
                             }
                         }
-                        if(array.length>0) {
-                            const nextContent =  metadata.kind === "String" ? String.fromCharCode(...array) : array;
-                            yield applyDelta(nextContent,changes.map(([start,...rest]) => [start-offset,...rest]));
+                        for await(const chunk of contentStream) {
+                            array = [...array, ...chunk];
+                            offset += chunk.length;
+                            if (offset + length >= end) { // read just enough of the file to address all the changes between start and end
+                                break;
+                            }
                         }
-                        array = [];
+                        const nextarray = array.length >= length ? array.slice(length) : []; // get the portion of the array beyond the current change bounds
+                        array = new Uint8Array(array.slice(0,length)); // get the portion of the array within the current change bounds
+                        const nextContent =  metadata.kind === "String" ? String.fromCharCode(...array) : array;
+                        yield applyDelta(nextContent,changes.map(([changeStart,...rest]) => [changeStart-start,...rest])); // apply the change
+                        array = nextarray; // set array to the next portion to process
+                    }
+                    if(array.length>0) { // process portion of file already read, which has no changes
+                        yield  metadata.kind === "String" ? String.fromCharCode(... new Uint8Array(array)) :  new Uint8Array(array);
+                    }
+                    for await(const chunk of contentStream) { // process rest of file, which has no changes
+                        yield  metadata.kind === "String" ? String.fromCharCode(...new Uint8Array([...chunk])) : new Uint8Array([...chunk]);
                     }
                 })();
             }

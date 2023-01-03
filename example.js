@@ -23,10 +23,11 @@ console.log(await ipfs.files.versioned.read("/hello-world.txt#2",{all:true}));
 // logs the same thing as the above, since version 2 is the most recent
 console.log(await ipfs.files.versioned.read("/hello-world.txt",{all:true}));
 await ipfs.files.versioned.write("/hello-world.txt","hello there mary!");
-// NOTE!! CHUNKING DOES NOT WORK IN THIS RELEASE
+// NOTE!! CHUNKING ONLY TESTED FOR SMALL FILES
 for await(const chunk of await ipfs.files.versioned.read("/hello-world.txt#3")) { // returns a generator for chunks of the file as Buffers or strings
     console.log(chunk);
 }
+console.log((await all(ipfs.files.versioned.read("/hello-world.txt#3"))).join(""))
 // see documentation for withMetadata, withHistory, withRoot
 console.log(await ipfs.files.versioned.read("/hello-world.txt",{all:true,withMetadata:true,withHistory:true,withRoot:true}));
 // standard ipfs file read returns an array of transforms and metadata, the first item of which has a path (CID) of the original content
