@@ -1,4 +1,4 @@
-import {create} from "ipfs";
+import crypto from "crypto";
 import {getDelta,applyDelta} from "little-diff";
 import {argWaiter} from "arg-waiter";
 import {all as allItems} from "@anywhichway/all";
@@ -54,13 +54,13 @@ const getChangeSets = (history) => {
 
 const ipvfs = argWaiter((ipfs) => {
     ipfs.files.versioned = {
-        async read(path,{all,withMetadata,withHistory,withRoot}={}) {
+        async read(path,{all,withMetadata,withHistory,withRoot,...options}={}) {
             const parts = path.split("/"),
                 name = parts.pop(),
                 nameParts =  name.includes("@") ? name.split("@") : (name.includes("#") ? name.split("#") : null),
                 version = name.includes("@")  ? nameParts.pop() : (name.includes("#") ? parseInt(nameParts.pop()) : null),
                 vtype = name.includes("@") ? "@" : (name.includes("#") ? "#" : null),
-                buffer = await chunksToBuffer(allItems(ipfs.files.read(nameParts ? parts.join("/") + "/" + nameParts.pop() : path))),
+                buffer = await chunksToBuffer(allItems(ipfs.files.read(nameParts ? parts.join("/") + "/" + nameParts.pop() : path,options))),
                 data = JSON.parse(String.fromCharCode(...buffer));
             if(name.includes("#") && isNaN(version)) {
                 throw new TypeError(`File version using # is not a number for: ${name}`);
@@ -120,7 +120,7 @@ const ipvfs = argWaiter((ipfs) => {
                         const nextarray = array.length >= length ? array.slice(length) : []; // get the portion of the array beyond the current change bounds
                         array = new Uint8Array(array.slice(0,length)); // get the portion of the array within the current change bounds
                         const nextContent =  metadata.kind === "String" ? String.fromCharCode(...array) : array;
-                        yield applyDelta(nextContent,changes.map(([changeStart,...rest]) => [changeStart-start,...rest])); // apply the change
+                        yield applyDelta(nextContent,changes.map(([changeStart,...rest]) => [changeStart-start,...rest])); // apply the change after adjusting for file offset
                         array = nextarray; // set array to the next portion to process
                     }
                     if(array.length>0) { // process portion of file already read, which has no changes
@@ -140,7 +140,7 @@ const ipvfs = argWaiter((ipfs) => {
                 }
                 if(withMetadata) {
                     result.metadata = metadata;
-                    result.metadata.birthtime = data[0].birthtime;
+                    result.metadata.btime = data[0].btime;
                 }
                 if(withHistory) {
                     result.history =  history;
@@ -149,25 +149,31 @@ const ipvfs = argWaiter((ipfs) => {
             }
             return content;
         },
-        async write(path,content,{version,...rest}={}) {
-            const kind = content.constructor.name;
-            const parts = path.split("/"),
+        async write(path,content,{metadata={},...options}={}) {
+            const {version,...rest} = metadata,
+                kind = content.constructor.name,
+                parts = path.split("/"),
                 name = parts.pop(),
                 dir = parts.join("/") + "/",
                 files = await allItems(ipfs.files.ls(dir)),
-                file = files.find((file) => file.name===name);
+                file = files.find((file) => file.name===name),
+                hash = crypto.createHash('sha256').update(content).digest('hex');
             if(file) {
                 const buffer = await chunksToBuffer(allItems(ipfs.files.read(path))),
                     data = JSON.parse(String.fromCharCode(...buffer)),
-                    parent = data[data.length-1],
-                    rootBuffer = await chunksToBuffer(allItems(ipfs.cat(data[0].path))),
-                    rootContent = kind==="String" ? String.fromCharCode(...rootBuffer) : rootBuffer,
-                    parentContent = data.reduce((parentContent,item) => {
-                        return applyDelta(parentContent,item.delta);
-                    },rootContent),
-                    delta = getDelta(parentContent,content);
-                if(delta.length>0 || (version!==undefined && version!==parent.version) || Object.entries(rest).some(([key,value]) => parent[key]!==value)) {
+                    parent = data[data.length-1];
+                if(parent.hash!==hash || (version!==undefined && version!==parent.version) || Object.entries(rest).some(([key,value]) => parent[key]!==value)) {
+                    let delta = [];
+                    if(parent.hash!==hash) {
+                        const rootBuffer = await chunksToBuffer(allItems(ipfs.cat(data[0].path))),
+                            rootContent = kind==="String" ? String.fromCharCode(...rootBuffer) : rootBuffer,
+                            parentContent = data.reduce((parentContent,item) => {
+                                return applyDelta(parentContent,item.delta);
+                            },rootContent);
+                        delta = getDelta(parentContent,content);
+                    }
                     data.push({
+                        hash,
                         version:version||data.length+1,
                         kind,
                         ...rest,
@@ -175,14 +181,14 @@ const ipvfs = argWaiter((ipfs) => {
                         mtime: Date.now()
                     })
                     await ipfs.files.rm(path); // write sometimes fails to flush tail of file, so simply delete and re-create
-                    await ipfs.files.write(path,JSON.stringify(data),{create:true});
+                    await ipfs.files.write(path,JSON.stringify(data),{...options,create:true});
                 }
                 return;
             }
             const added = await ipfs.add(content),
                 now = Date.now(),
-                data = [{path:added.path,version:version||1,kind,...rest,delta:[],birthtime:now,mtime:now}];
-            await ipfs.files.write(path,JSON.stringify(data),{create:true});
+                data = [{path:added.path,hash,version:version||1,kind,...rest,delta:[],btime:now,mtime:now}];
+            await ipfs.files.write(path,JSON.stringify(data),{...options,create:true});
         }
     }
     return ipfs;
