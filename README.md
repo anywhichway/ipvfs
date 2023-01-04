@@ -131,6 +131,8 @@ If there are any changes to the `content`, `version` or `restOfMetadata` since t
 
 # Release History (Reverse Chronological Order)
 
+2023-01-04 v0.0.7a Updated dependency versions for little-diff, arg-waiter, and @anywhichway/all.
+
 2023-01-03 v0.0.6a Documentation updates. Passing of standard read/write options. Optimizations usings SHA-256 hashes to compare content.
 
 2023-01-02 v0.0.5a Documentation updates. Chunking working for small files (i.e. those that are a single chunk).

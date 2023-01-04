@@ -1,6 +1,6 @@
 {
   "name": "ipvfs",
-  "version": "0.0.6a",
+  "version": "0.0.7a",
   "description": "Creates and manages diff versioned files in an IPFS store",
   "type": "module",
   "main": "index.js",
@@ -24,9 +24,9 @@
   },
   "homepage": "https://github.com/anywhichway/ipvfs#readme",
   "dependencies": {
-    "@anywhichway/all": "^0.0.1",
-    "arg-waiter": "^0.0.1",
+    "@anywhichway/all": "^1.0.1",
+    "arg-waiter": "^1.0.0",
     "ipfs": "^0.65.0",
-    "little-diff": "^0.0.1"
+    "little-diff": "^1.0.0"
   }
 }
