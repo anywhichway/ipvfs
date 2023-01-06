@@ -8,7 +8,7 @@ Creates and manages diff versioned files in an IPFS Mutable File System store.
 
 # Rationale
 
-IPFS automatically versions files because it is content addressable, i.e. each file can be identified and retrieved based on a unique has of its contents. The IPFS Mutable File System also supports the access of files through normal names; however, it does not keep a version history so that older version can be reviewed or recovered. The Interplanetary Versioned File System (ipvfs) if layered on top of the IPFS Mutable File System to support version tracking.
+IPFS automatically versions files because it is content addressable, i.e. each file can be identified and retrieved based on a unique hash of its contents. The IPFS Mutable File System also supports the access of files through normal names; however, it does not keep a version history so that older version can be reviewed or recovered. The Interplanetary Versioned File System (ipvfs) if layered on top of the IPFS Mutable File System to support version tracking.
 
 There are other options and approaches for file version tracking with IPFS:
 
@@ -131,9 +131,11 @@ If there are any changes to the `content`, `version` or `restOfMetadata` since t
 
 # Release History (Reverse Chronological Order)
 
+2023-01-05 v0.0.8a Updated docs.
+
 2023-01-04 v0.0.7a Updated dependency versions for little-diff, arg-waiter, and @anywhichway/all.
 
-2023-01-03 v0.0.6a Documentation updates. Passing of standard read/write options. Optimizations usings SHA-256 hashes to compare content.
+2023-01-03 v0.0.6a Documentation updates. Passing of standard read/write options. Optimizations using SHA-256 hashes to compare content.
 
 2023-01-02 v0.0.5a Documentation updates. Chunking working for small files (i.e. those that are a single chunk).
 
