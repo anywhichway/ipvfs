@@ -74,7 +74,7 @@ returns `ipfs`
 
 ## async ipfs.files.versioned.read(path:string,{all,withMetadata,withHistory,withRoot}={})
 
-Reads a versioned file and returns the changed contents as chunks of strings or buffers (depending on content stored) unless `all` is set to true, in which can the entire content is returned at once. In the current version `all` MUST be set to true. Chunking is not yet supported. The API is designed this way to better mirror the regular files API.
+Reads a versioned file and returns the changed contents as chunks of strings or buffers (depending on content stored) unless `all` is set to true, in which can the entire content is returned at once. 
 
 The path may end with one of:
 
@@ -130,6 +130,8 @@ If the file at path does not exist, it is created.
 If there are any changes to the `content`, `version` or `restOfMetadata` since the previous write a new `ChangeRecord` is added to the history. Leaving properties out of `restOfMetadata` has them remain the same. To delete a property, use an explicit value of `undefined` or `null`.
 
 # Release History (Reverse Chronological Order)
+
+2023-01-06 v0.0.9a Updated docs. Implemented large file example, for which chunking works.
 
 2023-01-05 v0.0.8a Updated docs.
 
