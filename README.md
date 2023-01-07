@@ -166,6 +166,10 @@ If the file at path does not exist, it is created.
 
 # Release History (Reverse Chronological Order)
 
+2023-01-07 v0.1.1b Removed more excess test data.
+
+2023-01-07 v0.1.0b Removed some excess test data.
+
 2023-01-07 v0.0.10a Added `rebase` and `asBase` capability. Added JSON save and restore capability. Updated docs. Functionally complete. Next version will be a BETA.
 
 2023-01-06 v0.0.9a Updated docs. Implemented large file example, for which chunking works.
