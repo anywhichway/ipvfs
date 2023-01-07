@@ -3,8 +3,8 @@ Creates and manages diff versioned files in an IPFS Mutable File System store.
 
 # Goals
 
-- A simple version management capability that can meet the needs of casual users when wrapped in a user interface. In short, provide the ability to track and retrieve old versions of files.
-- Be efficient in time and space
+- A simple version management capability that can meet the needs of casual users when wrapped in a user interface. In short, provide the ability to track and retrieve old versions of files. Branching and merging are not an objective.
+- Be efficient in time, space, and network utilization.
 
 # Rationale
 
@@ -32,6 +32,10 @@ npm install --save ipvfs
 # Usage
 
 ```javascript
+import ipvfs from "ipvfs";
+import {create} from "ipfs";
+import {all} from "@anywhichway/all";
+
 const ipfs = await ipvfs(create({repo:"demo-filestore"})); // create an ipfs instance and enhance it to use ipvfs
 // use standard ipfs file function rm to remove the file
 try {
@@ -41,7 +45,8 @@ try {
 }
 // use the versioned forms of write and read
 console.log(await ipfs.files.versioned.write("/hello-world.txt","hello there peter!")); // returns undefined just like regular version
-console.log(await ipfs.files.versioned.read("/hello-world.txt#1",{all:true})); // returns the contents as a single item, i.e. all chunks combined
+console.log(await ipfs.files.versioned.read("/hello-world.txt#1",{all:true}));
+//console.log(await ipfs.files.versioned.read("/hello-world.txt#1",{all:true})); // returns the contents as a single item, i.e. all chunks combined
 try {
     console.log(await ipfs.files.versioned.read("/hello-world.txt#2",{all:true})); // throws since there is no version 2
 } catch(e) {
@@ -49,19 +54,28 @@ try {
 }
 await ipfs.files.versioned.write("/hello-world.txt","hello there paul!");
 // logs the second version of the file
-console.log(await ipfs.files.versioned.read("/hello-world.txt#2",{all:true}));
+console.log(await ipfs.files.versioned.read("/hello-world.txt#2",{all:true}),"=  hello there paul!");
 // logs the same thing as the above, since version 2 is the most recent
 console.log(await ipfs.files.versioned.read("/hello-world.txt",{all:true}));
 await ipfs.files.versioned.write("/hello-world.txt","hello there mary!");
-// NOTE!! CHUNKING ONLY TESTED FOR SMALL FILES
 for await(const chunk of await ipfs.files.versioned.read("/hello-world.txt#3")) { // returns a generator for chunks of the file as Buffers or strings
     console.log(chunk);
 }
-console.log((await all(ipfs.files.versioned.read("/hello-world.txt#3"))).join("")) // same as above but joined
+console.log((await all(ipfs.files.versioned.read("/hello-world.txt#3"))).join(""),"= hello there mary!")
 // see documentation for withMetadata, withHistory, withRoot
 console.log(await ipfs.files.versioned.read("/hello-world.txt",{all:true,withMetadata:true,withHistory:true,withRoot:true}));
 // standard ipfs file read returns an array of transforms and metadata, the first item of which has a path (CID) of the original content
-console.log(JSON.parse(String.fromCharCode(...await ipvfs.chunksToBuffer(all(ipfs.files.read("/hello-world.txt"))))));
+console.log(String.fromCharCode(...await ipvfs.chunksToBuffer(all(ipfs.files.read("/hello-world.txt")))));
+// rebase to paul
+await ipfs.files.versioned.rebase("/hello-world.txt#2");
+// version 1 is now paul
+console.log(await ipfs.files.versioned.read("/hello-world.txt#1",{all:true}),"= hello there paul!");
+// version 2 is now mary
+console.log(await ipfs.files.versioned.read("/hello-world.txt#2",{all:true}),"= hello there mary!");
+// force base to peter
+await ipfs.files.versioned.write("/hello-world.txt","hello there peter!",{asBase:true});
+// standard ipfs file read shows a history with no changes, just a rebase to peter
+console.log(String.fromCharCode(...await ipvfs.chunksToBuffer(all(ipfs.files.read("/hello-world.txt")))));
 ```
 
 # API
@@ -74,19 +88,21 @@ returns `ipfs`
 
 ## async ipfs.files.versioned.read(path:string,{all,withMetadata,withHistory,withRoot}={})
 
-Reads a versioned file and returns the changed contents as chunks of strings or buffers (depending on content stored) unless `all` is set to true, in which can the entire content is returned at once. 
+Reads a versioned file and returns the changed contents as chunks of strings or buffers or an unchunked POJO (depending on content stored) unless `all` is set to true, in which can the entire content is returned at once. 
+
+Note: If an JavaScript object was saved, then `all` is implicitly set to `true`. Regardless of the class of the saved object, it is returned as a POJO.
 
 The path may end with one of:
 
 - a file name with no version specifier
-- a file name with a `#<number>` specifier
-- a file name with an `@<string>` specifier
+- a file name with a `#<number>` version number
+- a file name with an `@<string>` version identifier
 
-An object is only returned if one of `withMetadata`, `withHistory`, `withRoot` is present, otherwise a string or buffer is returned. The returned object has the following form:
+An object is returned if one of `withMetadata`, `withHistory`, `withRoot` is present. The returned object has the following form:
 
-```json
+```javascript
 {
-    content: string|Buffer|asyncGenerator, // file contents, asyncGenerator if `all` is not set to true
+    content: string|Buffer|Object|asyncGenerator, // file contents, asyncGenerator if `all` is not set to true
     metadata: {
             version: number|string, // if number it is the same as the index+1 in the history, otherwise manaully assigned string
             ... rest // key value metadata provided when the file was created or updated
@@ -115,21 +131,42 @@ A ChangeRecord takes the following form:
 }
 ```
 
-## async ipfs.files.versioned.write(path:string,content:string|Buffer,{version,...restOfMetadata}={})
+## async ipfs.files.versioned.rebase(path:string,readOptions={},writeOptions={})
+
+Makes the provided version be the base version. Preserves history that is after the new base. Renumbers numeric version numbers but leave string versions the same. Sets `mtime` on all subsequent versions in the preserved history to the time of the rebase. Adds a `rebased` array to the first change record. The rebased array has one entry for every time the file is rebased. Each entry is the version number and the time in milliseconds of the rebase.
+
+`path` is a file path including a `#` version number or an `@` version identifier.
+
+`readOptions` are the standard `ipfs.files.read` options.
+
+`writeOptions` are the standard `ipfs.files.write` options;
+
+
+## async ipfs.files.versioned.write(path:string,content:string|Buffer|Object,{metadata={},asBase:boolean,...restOfOptions}={})
 
 Writes a versioned file.
 
-`version` and `...restOfMetadata` are optional. 
+`{version,...restOfMetadata} = metadata`
 
-When `version` is provided, it should be a string. It can be retrieved using the `@` form of `read`. Semantic versioning, .e.g. `@1.0.1` is not required, but certainly possible. The calling library will need to handle the semantics. When a version is not provided, a sequential number is assigned that is the same as the history index postion + 1. Previous versiouns can always be retrieved using the `#` from of `read`.
+`version` and `...restOfMetadata` are optional.
 
-the `restOfMetadata` can be any JSON key vale pairs, including nested ones.
+When `version` is provided, it should be a string. It can be retrieved using the `@` form of `read`. Semantic versioning, .e.g. `@1.0.1` is not required, but certainly possible. The calling library will need to handle the semantics. When a version is not provided, a sequential number is assigned that is the same as the history index position + 1. Previous versions can always be retrieved using the `#` from of `read`.
 
-If the file at path does not exist, it is created.
+the `restOfMetadata` can be any JSON key value pairs, including nested ones.
 
 If there are any changes to the `content`, `version` or `restOfMetadata` since the previous write a new `ChangeRecord` is added to the history. Leaving properties out of `restOfMetadata` has them remain the same. To delete a property, use an explicit value of `undefined` or `null`.
 
+`asBase` instructs `ipvfs` to use the content as the base version. History is truncated. An array `rebased` is added to the first change record. See the function`rebase` for a description.
+
+`restOfOptions` are the standard options for `ipfs.files.write`.
+
+Note: Writing a new version with an Object as content is compatible with files that have previously held strings, but not with those that have held Buffers. Work to relax this constraint is in progress.
+
+If the file at path does not exist, it is created.
+
 # Release History (Reverse Chronological Order)
+
+2023-01-07 v0.0.10a Added `rebase` and `asBase` capability. Added JSON save and restore capability. Updated docs. Functionally complete. Next version will be a BETA.
 
 2023-01-06 v0.0.9a Updated docs. Implemented large file example, for which chunking works.
 

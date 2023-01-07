@@ -84,15 +84,22 @@ const ipvfs = argWaiter((ipfs) => {
                 }
             }
             const metadata = data[i],
+                kind = metadata.kind,
                 contentStream = ipfs.cat(data[0].path),
                 history = data.slice(0, i + 1);
             let content;
+            if(kind==="Object") {
+                all = true;
+            }
             if(all) {
                 const rootBuffer = await chunksToBuffer(allItems(contentStream)),
-                    rootContent = metadata.kind === "String" ? String.fromCharCode(...rootBuffer) : rootBuffer;
+                    rootContent = ["String","Object"].includes(kind) ? String.fromCharCode(...rootBuffer) : rootBuffer;
                 content = history.reduce((targetContent, {delta}) => {
                     return applyDelta(targetContent,delta);
                 }, rootContent);
+                if(kind==="Object") {
+                    content = JSON.parse(content);
+                }
             } else {
                 const changeSets = getChangeSets(history);
                 content = (async function*() {
@@ -104,9 +111,9 @@ const ipvfs = argWaiter((ipfs) => {
                             array = [...chunk];
                             offset += chunk.length;
                             if(offset<start) {
-                                yield metadata.kind === "String" ? String.fromCharCode(...new Uint8Array(array)) : new Uint8Array(array);
+                                yield kind === "String" ? String.fromCharCode(...new Uint8Array(array)) : new Uint8Array(array);
                             } else {
-                                yield metadata.kind === "String" ? String.fromCharCode(...new Uint8Array(array.slice(0,offset-(offset-start)))) : new Uint8Array(array.slice(0,offset-(offset-start)));
+                                yield kind === "String" ? String.fromCharCode(...new Uint8Array(array.slice(0,offset-(offset-start)))) : new Uint8Array(array.slice(0,offset-(offset-start)));
                                 array = array.slice(offset-(offset-start));
                             }
                         }
@@ -119,15 +126,15 @@ const ipvfs = argWaiter((ipfs) => {
                         }
                         const nextarray = array.length >= length ? array.slice(length) : []; // get the portion of the array beyond the current change bounds
                         array = new Uint8Array(array.slice(0,length)); // get the portion of the array within the current change bounds
-                        const nextContent =  metadata.kind === "String" ? String.fromCharCode(...array) : array;
+                        const nextContent =  kind === "String" ? String.fromCharCode(...array) : array;
                         yield applyDelta(nextContent,changes.map(([changeStart,...rest]) => [changeStart-start,...rest])); // apply the change after adjusting for file offset
                         array = nextarray; // set array to the next portion to process
                     }
                     if(array.length>0) { // process portion of file already read, which has no changes
-                        yield  metadata.kind === "String" ? String.fromCharCode(... new Uint8Array(array)) :  new Uint8Array(array);
+                        yield  kind === "String" ? String.fromCharCode(... new Uint8Array(array)) :  new Uint8Array(array);
                     }
                     for await(const chunk of contentStream) { // process rest of file, which has no changes
-                        yield  metadata.kind === "String" ? String.fromCharCode(...new Uint8Array([...chunk])) : new Uint8Array([...chunk]);
+                        yield  kind === "String" ? String.fromCharCode(...new Uint8Array([...chunk])) : new Uint8Array([...chunk]);
                     }
                 })();
             }
@@ -149,24 +156,64 @@ const ipvfs = argWaiter((ipfs) => {
             }
             return content;
         },
-        async write(path,content,{metadata={},...options}={}) {
+        async rebase(path,readOptions={},writeOptions={}) {
+            const {content,history,metadata} = await ipfs.files.versioned.read(path,{all:true,withHistory:true,withMetadata:true,...readOptions}),
+                hash = crypto.createHash('sha256').update(content).digest('hex'),
+                version = history[history.length-1].version,
+                parts = path.split("/"),
+                name = parts.pop(),
+                dir = parts.join("/") + "/",
+                fname = name.includes("#") ? name.split("#").shift() : name.split("@").shift(),
+                currentHistory = JSON.parse(String.fromCharCode(...await chunksToBuffer(allItems(await ipfs.files.read(dir+fname))))),
+                now = Date.now(),
+                newHistory = currentHistory.slice(history.length).map((item,i)=> {
+                    if(typeof(item.version)==="number") {
+                        item.version = i+2;
+                    }
+                    item.mtime = now;
+                    return item;
+                }),
+                btime = history[0].btime,
+                rebased = history[0].rebased || [],
+                added = await ipfs.add(content);
+            delete metadata.btime;
+            const data = [{path:added.path,hash,rebased,version:typeof(version)==="string" ? version : 1,...metadata,delta:[],btime,mtime:now},...newHistory];
+            data[0].rebased.push([now,version]);
+            await ipfs.files.rm(dir+fname); // write sometimes fails to flush tail of file, so simply delete and re-create
+            await ipfs.files.write(dir+fname,JSON.stringify(data),{...writeOptions,create:true});
+        },
+        async write(path,content,{metadata={},asBase,...options}={}) {
             const {version,...rest} = metadata,
-                kind = content.constructor.name,
+                kind = content && typeof(content)==="object" && !Array.isArray(content) ? "Object" : content.constructor.name,
                 parts = path.split("/"),
                 name = parts.pop(),
                 dir = parts.join("/") + "/",
                 files = await allItems(ipfs.files.ls(dir)),
-                file = files.find((file) => file.name===name),
-                hash = crypto.createHash('sha256').update(content).digest('hex');
+                file = files.find((file) => file.name===name);
+            if(kind==="Object") {
+                content = JSON.stringify(content); // use a structured clone here to prevent cyclic errors?
+            }
+            const hash = crypto.createHash('sha256').update(content).digest('hex');
             if(file) {
                 const buffer = await chunksToBuffer(allItems(ipfs.files.read(path))),
                     data = JSON.parse(String.fromCharCode(...buffer)),
                     parent = data[data.length-1];
+                if(asBase) {
+                    const btime = data[0].btime,
+                        rebased = data[0].rebased || [],
+                        added = await ipfs.add(content),
+                        now = Date.now(),
+                        newdata = [{path:added.path,hash,rebased,version:version||1,kind,...rest,delta:[],btime,mtime:now}];
+                    newdata[0].rebased.push([now,data[0].version]);
+                    await ipfs.files.rm(path); // write sometimes fails to flush tail of file, so simply delete and re-create
+                    await ipfs.files.write(path,JSON.stringify(newdata),{...options,create:true});
+                    return;
+                }
                 if(parent.hash!==hash || (version!==undefined && version!==parent.version) || Object.entries(rest).some(([key,value]) => parent[key]!==value)) {
                     let delta = [];
                     if(parent.hash!==hash) {
                         const rootBuffer = await chunksToBuffer(allItems(ipfs.cat(data[0].path))),
-                            rootContent = kind==="String" ? String.fromCharCode(...rootBuffer) : rootBuffer,
+                            rootContent = ["String","Object"].includes(kind) ? String.fromCharCode(...rootBuffer) : rootBuffer,
                             parentContent = data.reduce((parentContent,item) => {
                                 return applyDelta(parentContent,item.delta);
                             },rootContent);
