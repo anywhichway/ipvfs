@@ -3,11 +3,18 @@ import {getDelta,applyDelta} from "little-diff";
 import {argWaiter} from "arg-waiter";
 import {all as allItems} from "@anywhichway/all";
 
-const chunksToBuffer = argWaiter((chunks) => {
+/*const chunksToBuffer = argWaiter((chunks) => {
     return new Uint8Array(chunks.reduce((buffer,chunk) => {
         buffer = [...buffer,...chunk];
         return buffer;
     },[]))
+})*/
+
+const chunksToBuffer = argWaiter((chunks) => {
+    return chunks.reduce((buffer,chunk) => {
+        return [...buffer,...chunk];
+        return buffer;
+    })
 })
 
 const getChangeSets = (history) => {
@@ -61,7 +68,8 @@ const ipvfs = argWaiter((ipfs) => {
                 version = name.includes("@")  ? nameParts.pop() : (name.includes("#") ? parseInt(nameParts.pop()) : null),
                 vtype = name.includes("@") ? "@" : (name.includes("#") ? "#" : null),
                 buffer = await chunksToBuffer(allItems(ipfs.files.read(nameParts ? parts.join("/") + "/" + nameParts.pop() : path,options))),
-                data = JSON.parse(String.fromCharCode(...buffer));
+                string = String.fromCharCode(...buffer),
+                data = JSON.parse(string);
             if(name.includes("#") && isNaN(version)) {
                 throw new TypeError(`File version using # is not a number for: ${name}`);
             }
@@ -179,16 +187,16 @@ const ipvfs = argWaiter((ipfs) => {
             delete metadata.btime;
             const data = [{path:added.path,hash,rebased,version:typeof(version)==="string" ? version : 1,...metadata,delta:[],btime,mtime:now},...newHistory];
             data[0].rebased.push([now,version]);
-            await ipfs.files.rm(dir+fname); // write sometimes fails to flush tail of file, so simply delete and re-create
-            await ipfs.files.write(dir+fname,JSON.stringify(data),{...writeOptions,create:true});
+            const string = JSON.stringify(data);
+            await ipfs.files.write(dir+fname,string,{...writeOptions,flush:true,truncate:true});
         },
         async write(path,content,{metadata={},asBase,...options}={}) {
-            const {version,...rest} = metadata,
+            const {version,...rest} = metadata, // todo: provide abiliyt to write using @ in path name
                 kind = content && typeof(content)==="object" && !Array.isArray(content) ? "Object" : content.constructor.name,
                 parts = path.split("/"),
                 name = parts.pop(),
                 dir = parts.join("/") + "/",
-                files = await allItems(ipfs.files.ls(dir)),
+                files = await allItems(ipfs.files.ls(dir)), // todo: use stat to check for file, less expensive
                 file = files.find((file) => file.name===name);
             if(kind==="Object") {
                 content = JSON.stringify(content); // use a structured clone here to prevent cyclic errors?
@@ -203,10 +211,10 @@ const ipvfs = argWaiter((ipfs) => {
                         rebased = data[0].rebased || [],
                         added = await ipfs.add(content),
                         now = Date.now(),
-                        newdata = [{path:added.path,hash,rebased,version:version||1,kind,...rest,delta:[],btime,mtime:now}];
+                        newdata = [{path:added.path,hash,rebased,version:version||1,kind,...rest,delta:[],btime,mtime:now}],
+                        string = JSON.stringify(newdata);
                     newdata[0].rebased.push([now,data[0].version]);
-                    await ipfs.files.rm(path); // write sometimes fails to flush tail of file, so simply delete and re-create
-                    await ipfs.files.write(path,JSON.stringify(newdata),{...options,create:true});
+                    await ipfs.files.write(path,string,{...options,truncate:true});
                     return;
                 }
                 if(parent.hash!==hash || (version!==undefined && version!==parent.version) || Object.entries(rest).some(([key,value]) => parent[key]!==value)) {
@@ -227,15 +235,15 @@ const ipvfs = argWaiter((ipfs) => {
                         delta,
                         mtime: Date.now()
                     })
-                    await ipfs.files.rm(path); // write sometimes fails to flush tail of file, so simply delete and re-create
-                    await ipfs.files.write(path,JSON.stringify(data),{...options,create:true});
+                    const string = JSON.stringify(data);
+                    await ipfs.files.write(path,string,{...options,truncate:true});
                 }
                 return;
             }
             const added = await ipfs.add(content),
                 now = Date.now(),
                 data = [{path:added.path,hash,version:version||1,kind,...rest,delta:[],btime:now,mtime:now}];
-            await ipfs.files.write(path,JSON.stringify(data),{...options,create:true});
+            await ipfs.files.write(path,JSON.stringify(data),{...options,create:true,flush:true,parents:true});
         }
     }
     return ipfs;

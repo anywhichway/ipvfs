@@ -3,12 +3,12 @@ Creates and manages diff versioned files in an IPFS Mutable File System store.
 
 # Goals
 
-- A simple version management capability that can meet the needs of casual users when wrapped in a user interface. In short, provide the ability to track and retrieve old versions of files. Branching and merging are not an objective.
+- A simple version management capability that can meet the needs of casual document authors when wrapped in a user interface. In short, provide the ability to track and retrieve old versions of files. Branching and merging are not an objective.
 - Be efficient in time, space, and network utilization.
 
 # Rationale
 
-IPFS automatically versions files because it is content addressable, i.e. each file can be identified and retrieved based on a unique hash of its contents. The IPFS Mutable File System also supports the access of files through normal names; however, it does not keep a version history so that older version can be reviewed or recovered. The Interplanetary Versioned File System (ipvfs) if layered on top of the IPFS Mutable File System to support version tracking.
+IPFS automatically versions files because it is content addressable, i.e. each file can be identified and retrieved based on a unique hash of its contents. The IPFS Mutable File System also supports the access of files through normal names; however, it does not keep a version history so that older versions can be reviewed or recovered. The Interplanetary Versioned File System (ipvfs) if layered on top of the IPFS Mutable File System to support version tracking.
 
 There are other options and approaches for file version tracking with IPFS:
 
@@ -94,7 +94,7 @@ Note: If an JavaScript object was saved, then `all` is implicitly set to `true`.
 
 The path may end with one of:
 
-- a file name with no version specifier
+- a file name with no version specifier (returns most recent version)
 - a file name with a `#<number>` version number
 - a file name with an `@<string>` version identifier
 
@@ -164,7 +164,17 @@ Note: Writing a new version with an Object as content is compatible with files t
 
 If the file at path does not exist, it is created.
 
+# Testing
+
+Due to nuances related to the start-up of IPFS we were unable to get native Node unit testing or Jest unit testing to work. See https://discuss.ipfs.tech/t/unit-testing-with-jest/15808. Hence, we created a custom unit test harness. Just run `node index.test.js`.
+
+Because the test harness is custom, we can't provide covergae details at this time. Until coverage can be verified, IPVFS will remain in beta, although more features may be added.
+
 # Release History (Reverse Chronological Order)
+
+2023-01-10 v0.1.3b Added custom test harness and unit tests.
+
+2023-01-07 v0.1.2b Started adding unit tests.
 
 2023-01-07 v0.1.1b Removed more excess test data.
 

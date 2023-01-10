@@ -1,11 +1,11 @@
 {
   "name": "ipvfs",
-  "version": "0.1.1b",
+  "version": "0.1.3b",
   "description": "Creates and manages diff versioned files in an IPFS store",
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node index.test.js"
   },
   "repository": {
     "type": "git",
@@ -27,6 +27,6 @@
     "@anywhichway/all": "^1.0.1",
     "arg-waiter": "^1.0.0",
     "ipfs": "^0.65.0",
-    "little-diff": "^1.0.0"
+    "little-diff": "^1.0.2"
   }
 }

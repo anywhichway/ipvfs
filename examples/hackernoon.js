@@ -20,7 +20,7 @@ console.log(await ipfs.files.versioned.read("/hello-world-versioned.txt",{all:tr
 // log first version contents
 console.log(await ipfs.files.versioned.read("/hello-world-versioned.txt#1",{all:true}));
 
-await ipfs.files.versioned.write("/hello-world-versioned.txt","hello there mary!",{version:"Mary Version"});
+await ipfs.files.versioned.write("/hello-world-versioned.txt","hello there mary!",{metadata:{version:"Mary Version"}});
 console.log(await ipfs.files.versioned.read("/hello-world-versioned.txt@Mary Version",{all:true}));
 
 console.log(await ipfs.files.versioned.read("/hello-world-versioned.txt",{all:true,withHistory:true}));
