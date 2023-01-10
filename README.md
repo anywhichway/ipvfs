@@ -166,11 +166,11 @@ If the file at path does not exist, it is created.
 
 # Testing
 
-Due to nuances related to the start-up of IPFS we were unable to get native Node unit testing or Jest unit testing to work. See https://discuss.ipfs.tech/t/unit-testing-with-jest/15808. Hence, we created a custom unit test harness. Just run `node index.test.js`.
-
-Because the test harness is custom, we can't provide covergae details at this time. Until coverage can be verified, IPVFS will remain in beta, although more features may be added.
+Testing is done with Jasmin and C8. We were unable to get native Node or Jest testing to work.
 
 # Release History (Reverse Chronological Order)
+
+2023-01-10 v0.1.4b Got Jasmin and C8 working for testing. No longer using custom test harness. Code left in index.test.custom.js because it has some interesting performance and memory testing capabilities.
 
 2023-01-10 v0.1.3b Added custom test harness and unit tests.
 

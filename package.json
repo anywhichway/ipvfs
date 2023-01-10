@@ -1,11 +1,11 @@
 {
   "name": "ipvfs",
-  "version": "0.1.3b",
+  "version": "0.1.4b",
   "description": "Creates and manages diff versioned files in an IPFS store",
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "node index.test.js"
+    "test": "c8 jasmine"
   },
   "repository": {
     "type": "git",
@@ -28,5 +28,9 @@
     "arg-waiter": "^1.0.0",
     "ipfs": "^0.65.0",
     "little-diff": "^1.0.2"
+  },
+  "devDependencies": {
+    "jasmine": "^4.5.0",
+    "nyc": "^15.1.0"
   }
 }
