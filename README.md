@@ -82,11 +82,13 @@ console.log(String.fromCharCode(...await ipvfs.chunksToBuffer(all(ipfs.files.rea
 
 ## async ipvfs(ipfs:ipfsInstance)
 
-Enhance the `ipfs.files` sub-object to support versioned files with a sub-object  `ipfsInstance.files.versioned`;
+Enhance the `ipfs.files` sub-object to support versioned files with a sub-object  `ipfsInstance.files.versioned`.
 
 returns `ipfs`
 
-## async ipfs.files.versioned.read(path:string,{all,withMetadata,withHistory,withRoot}={})
+As a result, all other methods are available as `ipfs.files.versioned.<methodName>`.
+
+## async versioned.read(path:string,{all,withMetadata,withHistory,withRoot}={})
 
 Reads a versioned file and returns the changed contents as chunks of strings or buffers or an unchunked POJO (depending on content stored) unless `all` is set to true, in which can the entire content is returned at once. 
 
@@ -131,7 +133,17 @@ A ChangeRecord takes the following form:
 }
 ```
 
-## async ipfs.files.versioned.rebase(path:string,readOptions={},writeOptions={})
+## async versioned.publish(path:string)
+
+Makes the provided version the published version. If a published version exists, it will be returned from `versioned.read` when no version is specified; however, the version is not changed when something is published, e.g. you can publish version 5 while working on version 10. 
+
+The most important aspect of publishing is that the full content of the version is added to IPFS and a CID path is returned so the contents can be accessed directly via an IPFS gateway, e.g. 
+
+`path` is a file path including a `#` version number or an `@` version identifier.
+
+returns CID path
+
+## async versioned.rebase(path:string,readOptions={},writeOptions={})
 
 Makes the provided version be the base version. Preserves history that is after the new base. Renumbers numeric version numbers but leave string versions the same. Sets `mtime` on all subsequent versions in the preserved history to the time of the rebase. Adds a `rebased` array to the first change record. The rebased array has one entry for every time the file is rebased. Each entry is the version number and the time in milliseconds of the rebase.
 
@@ -141,8 +153,9 @@ Makes the provided version be the base version. Preserves history that is after 
 
 `writeOptions` are the standard `ipfs.files.write` options;
 
+returns undefined
 
-## async ipfs.files.versioned.write(path:string,content:string|Buffer|Object,{metadata={},asBase:boolean,...restOfOptions}={})
+## async versioned.write(path:string,content:string|Buffer|Object,{metadata={},asBase:boolean,...restOfOptions}={})
 
 Writes a versioned file.
 
@@ -164,22 +177,27 @@ Note: Writing a new version with an Object as content is compatible with files t
 
 If the file at path does not exist, it is created.
 
+returns undefined
+
 # Testing
 
 Testing is done with Jasmin and C8. We were unable to get native Node or Jest testing to work.
 
 ## Current Test Coverage
 
-----------------|---------|----------|---------|---------|------------------------
-File            | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s      
-----------------|---------|----------|---------|---------|------------------------
-All files       |   97.46 |    85.18 |     100 |   97.46 |                       
-ipvfs          |   96.04 |     84.7 |     100 |   96.04 |                       
-index.js      |   96.04 |     84.7 |     100 |   96.04 | 15,121,128-133,141-142
+----------------|---------|----------|---------|---------|------------------------------------
+File            | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s                  
+----------------|---------|----------|---------|---------|------------------------------------
+All files       |   98.21 |    84.78 |     100 |   98.21 |                                   
+ipvfs          |   96.92 |    87.58 |     100 |   96.92 |                                   
+index.js      |   96.92 |    87.58 |     100 |   96.92 | 15,133,140-145,153-154
+
 
 # Release History (Reverse Chronological Order)
 
-2023-01-10 v0.1.5b Added more unit tests. Corrected a few unit tests that were written in a way they would always pass.
+2023-01-11 v0.2.0b Added publish function and ability to write with version in path as well as metadata option. More unit tests. Documentation reformatting and content updates.
+
+2023-01-11 v0.1.5b Added more unit tests. Corrected a few unit tests that were written in a way they would always pass.
 
 2023-01-10 v0.1.4b Got Jasmin and C8 working for testing. No longer using custom test harness. Code left in index.test.custom.js because it has some interesting performance and memory testing capabilities.
 

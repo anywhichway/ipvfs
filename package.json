@@ -1,6 +1,6 @@
 {
   "name": "ipvfs",
-  "version": "0.1.5b",
+  "version": "0.2.0b",
   "description": "Creates and manages diff versioned files in an IPFS store",
   "type": "module",
   "main": "index.js",

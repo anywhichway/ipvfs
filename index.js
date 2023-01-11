@@ -58,6 +58,12 @@ const getChangeSets = (history) => {
     return changeSets;
 }
 
+const isPublishSpec = (spec,history) => {
+    if(Object.entries(spec).some(([key,value]) => !["cid","version","hash"].includes(key) || value==null)) return false;
+    if(typeof(spec.version)!=="number" || typeof(spec.cid)!=="string" || spec.hash!==history[spec.version-1]?.hash) return false;
+    return true;
+}
+
 const ipvfs = argWaiter((ipfs) => {
     ipfs.files.versioned = {
         async read(path,{all,withMetadata,withHistory,withRoot,...options}={}) {
@@ -72,28 +78,34 @@ const ipvfs = argWaiter((ipfs) => {
             if(name.includes("#") && isNaN(version)) {
                 throw new TypeError(`File version using # is not a number for: ${name}`);
             }
-            let i = data.length-1;
-            if(vtype) {
-                i = -1;
-                if(vtype==="#") {
-                    if(data[version-1]) {
-                        i = version - 1;
-                    }
-                } else {
-                    for(let j=0;j<data.length;j++) { // gets last index in case manual versioning is a bit messed up by users
-                        if(data[j].version===version) {
-                            i = j;
+            let metadata, history;
+            if(data[0].published && !vtype) {
+                metadata = data[data[0].published.version-1];
+                history = data.slice(0,data[0].published.version);
+            } else {
+                let i = data.length-1;
+                if(vtype) {
+                    i = -1;
+                    if(vtype==="#") {
+                        if(data[version-1]) {
+                            i = version - 1;
+                        }
+                    } else {
+                        for(let j=0;j<data.length;j++) { // gets last index in case manual versioning is a bit messed up by users
+                            if(data[j].version===version) {
+                                i = j;
+                            }
                         }
                     }
+                    if(i<0) {
+                        throw new Error(`Version ${vtype}${version} not found for ${parts.join("/")}/${name}`)
+                    }
                 }
-                if(i<0) {
-                    throw new Error(`Version ${vtype}${version} not found for ${parts.join("/")}/${name}`)
-                }
-            }
-            const metadata = data[i],
-                kind = metadata.kind,
-                contentStream = ipfs.cat(data[0].path),
+                metadata = data[i];
                 history = data.slice(0, i + 1);
+            }
+            const kind = metadata.kind,
+                contentStream = ipfs.cat(data[0].path);
             let content;
             if(kind==="Object") {
                 all = true;
@@ -163,6 +175,20 @@ const ipvfs = argWaiter((ipfs) => {
             }
             return content;
         },
+        async publish(path) {
+            const parts = path.split("/"),
+                name = parts.pop(),
+                nameParts =  name.includes("@") ? name.split("@") : (name.includes("#") ? name.split("#") : null),
+                result = await ipfs.files.versioned.read(path,{all:true,withHistory:true}),
+                hash = crypto.createHash('sha256').update(result.content).digest('hex'),
+                added = await ipfs.add(result.content);
+            let version = name.includes("@")  ? nameParts.pop() : (name.includes("#") ? parseInt(nameParts.pop()) : null);
+            if(version) {
+                version = result.history.findIndex((item) => item.version===version)+1
+            }
+            await this.write(path,result.content,{metadata:{published:{cid:added.path,version,hash}}});
+            return added;
+        },
         async rebase(path,readOptions={},writeOptions={}) {
             const {content,history,metadata} = await ipfs.files.versioned.read(path,{all:true,withHistory:true,withMetadata:true,...readOptions}),
                 hash = crypto.createHash('sha256').update(content).digest('hex'),
@@ -190,59 +216,105 @@ const ipvfs = argWaiter((ipfs) => {
             await ipfs.files.write(dir+fname,string,{...writeOptions,flush:true,truncate:true});
         },
         async write(path,content,{metadata={},asBase,...options}={}) {
-            const {version,...rest} = metadata, // todo: provide abiliyt to write using @ in path name
-                kind = content && typeof(content)==="object" && !Array.isArray(content) ? "Object" : content.constructor.name,
+            let {version,...rest} = metadata; // todo: provide abiliyt to write using @ in path name
+            const kind = content && typeof(content)==="object" && !Array.isArray(content) ? "Object" : content.constructor.name,
                 parts = path.split("/"),
                 name = parts.pop(),
+                nameParts =  name.includes("@") ? name.split("@") : (name.includes("#") ? name.split("#") : null),
+                vtype = name.includes("@") ? "@" : (name.includes("#") ? "#" : null),
                 dir = parts.join("/") + "/",
-                files = await allItems(ipfs.files.ls(dir)), // todo: use stat to check for file, less expensive
-                file = files.find((file) => file.name===name);
+                fname = nameParts ? nameParts.shift() : name,
+                fpath = dir + fname;
+            if(version!=null) {
+                const type = typeof(version);
+                try {
+                    if (type!=="string") throw new Error();
+                    const parts = version.split(".");
+                    if(parts.length===1) {
+                        if(!isNan(parseInt(version))) throw new Error();
+                    }
+                    if(parts.length===2) {
+                        if(!isNaN(parseFloat(version))) throw new Error();
+                    }
+                } catch(e) {
+                    throw new TypeError(`Version provided as argument, ${version}, must be clearly symbolic.`)
+                }
+            }
+            if(vtype) {
+                if(version!=null && version!=nameParts[nameParts.length-1]) {
+                    console.warn(`Version ${nameParts[nameParts.length-1]} in path is overriding ${version} in function arguments.`)
+                }
+                version = nameParts[nameParts.length-1];
+            }
+            if(vtype==="#") {
+                version = parseInt(version);
+                if(isNaN(version)) {
+                    throw new TypeError(`#${nameParts[nameParts.length-1]} version must be a number`)
+                }
+            }
             if(kind==="Object") {
                 content = JSON.stringify(content); // use a structured clone here to prevent cyclic errors?
             }
             const hash = crypto.createHash('sha256').update(content).digest('hex');
-            if(file) {
-                const buffer = await chunksToBuffer(allItems(ipfs.files.read(path))),
-                    data = JSON.parse(String.fromCharCode(...buffer)),
-                    parent = data[data.length-1];
+            let buffer;
+            try {
+                buffer = await chunksToBuffer(allItems(ipfs.files.read(fpath)));
+            } catch(e) {
+
+            }
+            if(buffer) {
+                const history = JSON.parse(String.fromCharCode(...buffer)),
+                    parent = version!=null ? history.find((item) => item.version===version) : history[history.length-1];
                 if(asBase) {
-                    const btime = data[0].btime,
-                        rebased = data[0].rebased || [],
+                    const btime = history[0].btime,
+                        rebased = history[0].rebased || [],
                         added = await ipfs.add(content),
                         now = Date.now(),
-                        newdata = [{path:added.path,hash,rebased,version:version||1,kind,...rest,delta:[],btime,mtime:now}],
-                        string = JSON.stringify(newdata);
-                    newdata[0].rebased.push([now,data[0].version]);
-                    await ipfs.files.write(path,string,{...options,truncate:true});
+                        newhistory = [{path:added.path,hash,rebased,version:version||1,kind,...rest,delta:[],btime,mtime:now}],
+                        string = JSON.stringify(newhistory);
+                    newhistory[0].rebased.push([now,history[0].version]);
+                    await ipfs.files.write(fpath,string,{...options,truncate:true});
                     return;
+                }
+                if(vtype==="#") {
+                    if(parent.hash!==hash) {
+                        throw new Error(`Can't write different content for a # numeric version. Try using a @ symbolic version.`)
+                    }
+                    if(Object.entries(rest).some(([key,value]) => key!=="published" || !isPublishSpec(value,history))) {
+                        throw new TypeError(`Can't write a # numeric version with anything other than a publish spec that matches a version in history.`)
+                    }
                 }
                 if(parent.hash!==hash || (version!==undefined && version!==parent.version) || Object.entries(rest).some(([key,value]) => parent[key]!==value)) {
                     let delta = [];
                     if(parent.hash!==hash) {
-                        const rootBuffer = await chunksToBuffer(allItems(ipfs.cat(data[0].path))),
+                        const rootBuffer = await chunksToBuffer(allItems(ipfs.cat(history[0].path))),
                             rootContent = ["String","Object"].includes(kind) ? String.fromCharCode(...rootBuffer) : rootBuffer,
-                            parentContent = data.reduce((parentContent,item) => {
+                            parentContent = history.reduce((parentContent,item) => {
                                 return applyDelta(parentContent,item.delta);
                             },rootContent);
                         delta = getDelta(parentContent,content);
                     }
-                    data.push({
-                        hash,
-                        version:version||data.length+1,
-                        kind,
-                        ...rest,
-                        delta,
-                        mtime: Date.now()
-                    })
-                    const string = JSON.stringify(data);
-                    await ipfs.files.write(path,string,{...options,truncate:true});
+                    if(rest.published) {
+                        history[0].published = rest.published;
+                    } else {
+                        history.push({
+                            hash,
+                            version:version||history.length+1,
+                            kind,
+                            ...rest,
+                            delta,
+                            mtime: Date.now()
+                        })
+                    }
+                    const string = JSON.stringify(history);
+                    await ipfs.files.write(fpath,string,{...options,truncate:true});
                 }
                 return;
             }
             const added = await ipfs.add(content),
                 now = Date.now(),
                 data = [{path:added.path,hash,version:version||1,kind,...rest,delta:[],btime:now,mtime:now}];
-            await ipfs.files.write(path,JSON.stringify(data),{...options,create:true,flush:true,parents:true});
+            await ipfs.files.write(fpath,JSON.stringify(data),{...options,create:true,flush:true,parents:true});
         }
     }
     return ipfs;
