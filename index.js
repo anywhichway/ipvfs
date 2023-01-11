@@ -187,7 +187,7 @@ const ipvfs = argWaiter((ipfs) => {
                 version = result.history.findIndex((item) => item.version===version)+1
             }
             await this.write(path,result.content,{metadata:{published:{cid:added.path,version,hash}}});
-            return added;
+            return added.path;
         },
         async rebase(path,readOptions={},writeOptions={}) {
             const {content,history,metadata} = await ipfs.files.versioned.read(path,{all:true,withHistory:true,withMetadata:true,...readOptions}),
@@ -216,7 +216,7 @@ const ipvfs = argWaiter((ipfs) => {
             await ipfs.files.write(dir+fname,string,{...writeOptions,flush:true,truncate:true});
         },
         async write(path,content,{metadata={},asBase,...options}={}) {
-            let {version,...rest} = metadata; // todo: provide abiliyt to write using @ in path name
+            let {version,...rest} = metadata;
             const kind = content && typeof(content)==="object" && !Array.isArray(content) ? "Object" : content.constructor.name,
                 parts = path.split("/"),
                 name = parts.pop(),

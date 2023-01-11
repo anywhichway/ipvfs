@@ -48,9 +48,13 @@ describe("main tests", () => {
         const fname = randomFileName();
         await ipfs.files.versioned.write("/"+fname,"test1");
         await ipfs.files.versioned.write("/"+fname,"test2");
-        await ipfs.files.versioned.publish("/"+fname+"#1");
-        const result = await ipfs.files.versioned.read("/"+fname,{all:true,withHistory:true});
+        const cid = await ipfs.files.versioned.publish("/"+fname+"#1"),
+            path = `https://ipfs.io/ipfs/${cid}`,
+            result = await ipfs.files.versioned.read("/"+fname,{all:true,withHistory:true}),
+            response = await fetch(path);
         expect(result.content).toBe("test1");
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe("test1");
     })
     it("write file containing Object",async () => {
         const fname = randomFileName();
@@ -150,6 +154,10 @@ describe("main tests", () => {
         expect(result.metadata).toBeInstanceOf(Object);
         expect(result.history).toBeInstanceOf(Array);
         expect(JSON.stringify(result.root)).toBe(JSON.stringify(result.history[0]))
+        const path = `https://ipfs.io/ipfs/${result.root.path}`,
+            response = await fetch(path);
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe("test");
     })
     it("read file as stream",async () => {
         const fname = randomFileName();

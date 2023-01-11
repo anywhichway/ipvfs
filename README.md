@@ -195,6 +195,8 @@ index.js      |   96.92 |    87.58 |     100 |   96.92 | 15,133,140-145,153-154
 
 # Release History (Reverse Chronological Order)
 
+2023-01-11 v0.2.1b Corrected `publish` to return CID path not CID object. Updated read tests to check the primary IPFS gateway for content as appropriate.
+
 2023-01-11 v0.2.0b Added publish function and ability to write with version in path as well as metadata option. More unit tests. Documentation reformatting and content updates.
 
 2023-01-11 v0.1.5b Added more unit tests. Corrected a few unit tests that were written in a way they would always pass.
