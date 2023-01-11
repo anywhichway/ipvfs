@@ -168,7 +168,18 @@ If the file at path does not exist, it is created.
 
 Testing is done with Jasmin and C8. We were unable to get native Node or Jest testing to work.
 
+## Current Test Coverage
+
+----------------|---------|----------|---------|---------|------------------------
+File            | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s      
+----------------|---------|----------|---------|---------|------------------------
+All files       |   97.46 |    85.18 |     100 |   97.46 |                       
+ipvfs          |   96.04 |     84.7 |     100 |   96.04 |                       
+index.js      |   96.04 |     84.7 |     100 |   96.04 | 15,121,128-133,141-142
+
 # Release History (Reverse Chronological Order)
+
+2023-01-10 v0.1.5b Added more unit tests. Corrected a few unit tests that were written in a way they would always pass.
 
 2023-01-10 v0.1.4b Got Jasmin and C8 working for testing. No longer using custom test harness. Code left in index.test.custom.js because it has some interesting performance and memory testing capabilities.
 

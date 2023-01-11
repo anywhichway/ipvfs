@@ -13,7 +13,6 @@ import {all as allItems} from "@anywhichway/all";
 const chunksToBuffer = argWaiter((chunks) => {
     return chunks.reduce((buffer,chunk) => {
         return [...buffer,...chunk];
-        return buffer;
     })
 })
 
