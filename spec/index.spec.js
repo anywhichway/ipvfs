@@ -1,8 +1,67 @@
+import { performance } from "node:perf_hooks";
+import process from "node:process";
 import ipvfs from "../index.js";
 import {create} from "ipfs";
 import {all} from "@anywhichway/all";
 
+const metrics = {};
 
+const objectDelta = (start,finish) => {
+    return Object.entries(start).reduce((delta,[key,value]) => {
+        if(typeof(value)==="number" && typeof(finish[key])==="number") {
+            delta[key] = finish[key] - value;
+        }
+        return delta;
+    },{})
+}
+
+const objectDeltaPercent = (start,finish) => {
+    return Object.entries(start).reduce((delta,[key,value]) => {
+        if(typeof(value)==="number" && typeof(finish[key])==="number") {
+            const change = finish[key] / value;
+            if(change===1) {
+                delta[key] = 0;
+            } else if(change>1) {
+                delta[key] = Math.round(((change - 1) * 100));
+            } else {
+                delta[key] = Math.round(((1 - change) * -100));
+            }
+        }
+        return delta;
+    },{})
+}
+
+const _it = it;
+it = function(name,f,timeout,cycles=1) {
+    const _f = f,
+        sampleMetrics = [];
+    f = async function(...args)  {
+        let cycle = 1;
+        while(cycle<=cycles) {
+            const sample = {
+                cycle,
+                cpu: {
+                    start: process.cpuUsage()
+                },
+                memory: {
+                    start: process.memoryUsage()
+                }
+            }
+            await _f(...args);
+            sample.cpu.finish = process.cpuUsage();
+            sample.memory.finish = process.memoryUsage();
+            sample.cpu.delta = objectDelta(sample.cpu.start,sample.cpu.finish);
+            sample.memory.delta = objectDelta(sample.memory.start,sample.memory.finish);
+            sample.cpu.pctChange = objectDeltaPercent(sample.cpu.start,sample.cpu.finish);
+            sample.memory.pctChange = objectDeltaPercent(sample.memory.start,sample.memory.finish);
+            sampleMetrics.push(sample);
+            cycle++;
+        }
+    };
+    const spec = _it(name,f,timeout),
+        fullName = spec.getFullName();
+    metrics[fullName] = sampleMetrics;
+}
 describe("main tests", () => {
     let ipfs;
     beforeAll(async () => {
@@ -23,7 +82,7 @@ describe("main tests", () => {
         await ipfs.files.versioned.write("/"+fname,"test");
         const result = await ipfs.files.versioned.read("/"+fname,{all:true});
         expect(result).toBe("test");
-    })
+    },null,5)
     it("write/read file non-symbolic version Error 1",async () => {
         const fname = randomFileName();
         let result;
@@ -239,6 +298,10 @@ describe("main tests", () => {
         expect(content.includes("b")).toBe(true);
         expect(content.includes("c")).toBe(true);
     },25*1000)
+
+    afterAll(() => {
+        //console.log(JSON.stringify(metrics,null,2));
+    })
 })
 
 
