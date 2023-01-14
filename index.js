@@ -59,7 +59,7 @@ const getChangeSets = (history) => {
 }
 
 const isPublishSpec = (spec,history) => {
-    if(Object.entries(spec).some(([key,value]) => !["cid","version","hash"].includes(key) || value==null)) return false;
+    if(Object.entries(spec).some(([key,value]) => !["cid","version","hash","path"].includes(key) || value==null)) return false;
     if(typeof(spec.version)!=="number" || typeof(spec.cid)!=="string" || spec.hash!==history[spec.version-1]?.hash) return false;
     return true;
 }
@@ -175,19 +175,28 @@ const ipvfs = argWaiter((ipfs) => {
             }
             return content;
         },
-        async publish(path) {
+        async publish(path,target) {
             const parts = path.split("/"),
                 name = parts.pop(),
                 nameParts =  name.includes("@") ? name.split("@") : (name.includes("#") ? name.split("#") : null),
                 result = await ipfs.files.versioned.read(path,{all:true,withHistory:true}),
-                hash = crypto.createHash('sha256').update(result.content).digest('hex'),
-                added = await ipfs.add(result.content);
+                hash = crypto.createHash('sha256').update(result.content).digest('hex');
             let version = name.includes("@")  ? nameParts.pop() : (name.includes("#") ? parseInt(nameParts.pop()) : null);
             if(version) {
                 version = result.history.findIndex((item) => item.version===version)+1
             }
-            await this.write(path,result.content,{metadata:{published:{cid:added.path,version,hash}}});
-            return added.path;
+            let cid;
+            if(target) {
+                await ipfs.files.write(target,result.content,{create:true});
+                const stat = await ipfs.files.stat(target);
+                cid = stat.cid.toString();
+                await this.write(path,result.content,{metadata:{published:{cid,path:target,version,hash}}});
+            } else {
+                const added = await ipfs.add(result.content);
+                cid = added.path;
+                await this.write(path,result.content,{metadata:{published:{cid,version,hash}}});
+            }
+            return cid;
         },
         async rebase(path,readOptions={},writeOptions={}) {
             const {content,history,metadata} = await ipfs.files.versioned.read(path,{all:true,withHistory:true,withMetadata:true,...readOptions}),
@@ -242,7 +251,7 @@ const ipvfs = argWaiter((ipfs) => {
             }
             if(vtype) {
                 if(version!=null && version!=nameParts[nameParts.length-1]) {
-                    console.warn(`Version ${nameParts[nameParts.length-1]} in path is overriding ${version} in function arguments.`)
+                    console.warn(`WARNING: Version ${nameParts[nameParts.length-1]} in path is overriding ${version} in function arguments.`)
                 }
                 version = nameParts[nameParts.length-1];
             }
