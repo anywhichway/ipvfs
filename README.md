@@ -195,7 +195,7 @@ index.js      |   96.92 |    87.58 |     100 |   96.92 | 15,133,140-145,153-154
 
 # Release History (Reverse Chronological Order)
 
-2023-01-14 v0.2.3b Enhanced `publish` to support writing to Mutable File System. Refined stress and performance testing. In the next release, the stress and performance testing will be extracted as [Benchtest](https://github.com/anywhichway/benchtest) 3.0.0b.
+2023-01-14 v0.2.3b Enhanced `publish` to support writing to Mutable File System. Refined stress and performance testing. In the next release, the stress and performance testing will be extracted as (https://github.com/anywhichway/benchtest)[Benchtest] 3.0.0b.
 
 2023-01-11 v0.2.2b Added some stress test capability to Jasmine testing. Removed `index.test.custom.js`.
 
