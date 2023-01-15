@@ -133,13 +133,13 @@ A ChangeRecord takes the following form:
 }
 ```
 
-## async versioned.publish(path:string)
+## async versioned.publish(path:string,target:string=null)
 
 Makes the provided version the published version. If a published version exists, it will be returned from `versioned.read` when no version is specified; however, the version is not changed when something is published, e.g. you can publish version 5 while working on version 10. 
 
-The most important aspect of publishing is that the full content of the version is added to IPFS and a CID path is returned so the contents can be accessed directly via an IPFS gateway, e.g. 
+The most important aspect of publishing is that the full content of the version is added to IPFS and a CID path is returned so the contents can be accessed directly via an IPFS gateway, i.e. `path` is a file path including a `#` version number or an `@` version identifier.
 
-`path` is a file path including a `#` version number or an `@` version identifier.
+By default, the content is published to regular IPFS. The `target` argument is optional and if provided will be used as an IPFS Mutable File System path, so you can do things like `versioned.publish("/drafts/index.html#3","/www/index.html")`.
 
 returns CID path
 
@@ -195,11 +195,13 @@ index.js      |   96.92 |    87.58 |     100 |   96.92 | 15,133,140-145,153-154
 
 # Release History (Reverse Chronological Order)
 
+2023-01-14 v0.2.3b Enhanced `publish` to support writing to Mutable File System. Refined stress and performance testing. In the next release, the stress and performance testing will be extracted as [Benchtest](https://github.com/anywhichway/benchtest) 3.0.0b.
+
 2023-01-11 v0.2.2b Added some stress test capability to Jasmine testing. Removed `index.test.custom.js`.
 
-2023-01-11 v0.2.1b Corrected `publish` to return CID path not CID object. Updated read tests to check the primary IPFS gateway for content as appropriate. Added soem stress test capability to Jasmine testing. Removed `index.test.custom.js`.
+2023-01-11 v0.2.1b Corrected `publish` to return CID path not CID object. Updated read tests to check the primary IPFS gateway for content as appropriate. Added some stress test capability to Jasmine testing. Removed `index.test.custom.js`.
 
-2023-01-11 v0.2.0b Added publish function and ability to write with version in path as well as metadata option. More unit tests. Documentation reformatting and content updates.
+2023-01-11 v0.2.0b Added `publish` function and ability to write with version in path as well as metadata option. More unit tests. Documentation reformatting and content updates.
 
 2023-01-11 v0.1.5b Added more unit tests. Corrected a few unit tests that were written in a way they would always pass.
 
