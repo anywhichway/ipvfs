@@ -29,6 +29,32 @@ This approach is neither simple or space efficient. It requires creating and man
 npm install --save ipvfs
 ```
 
+IPVFS uses Benchtest v3.0.0a, c8 and Jasmine for testing. Jasmine is installed as a dev dependency. You must install c8 globally.
+
+```
+npm install c8 -g
+```
+
+Jasmin must be configured to use sequential testing. Below is a copy of the `jasmine.json` file:
+
+```json
+{
+  "spec_dir": "spec",
+  "spec_files": [
+    "**/*[sS]pec.?(m)js"
+  ],
+  "helpers": [
+    "helpers/**/*.?(m)js"
+  ],
+  "env": {
+    "stopSpecOnExpectationFailure": false,
+    "random": false
+  }
+}
+```
+
+
+
 # Usage
 
 ```javascript
@@ -194,6 +220,8 @@ index.js      |   96.92 |    87.58 |     100 |   96.92 | 15,133,140-145,153-154
 
 
 # Release History (Reverse Chronological Order)
+
+2023-01-20 v0.2.4b Now using Benchtest@3.0.4a. Underlying ifps.files library seems to be generating a lot of unresolved Promises.
 
 2023-01-14 v0.2.3b Enhanced `publish` to support writing to Mutable File System. Refined stress and performance testing. In the next release, the stress and performance testing will be extracted as (https://github.com/anywhichway/benchtest)[Benchtest] 3.0.0b.
 
